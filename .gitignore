@@ -1,0 +1,10 @@
+# Ignore build output
+/build/
+/out/
+*.elf
+*.hex
+*.bin
+
+# Ignore OS junk
+.DS_Store
+Thumbs.db
