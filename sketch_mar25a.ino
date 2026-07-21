@@ -20,7 +20,7 @@ const int ENCODER_SW = 7;
 
 long startup_baseline = 0;
 long tare_offset = 0;
-float calibration_factor = 1035.0; 
+float calibration_factor = 1035.0; // <--------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 int previous_fill_y = 198; 
 float previous_needle_weight = -999.0; 
@@ -247,7 +247,8 @@ void loop() {
 
     Serial.print("Weight: "); Serial.print(current_weight, 1);
     Serial.print(" g   ... Total: "); Serial.print(raw_total_weight, 1);
-    Serial.print(" g   ... State: "); Serial.println(current_state);
+    Serial.print(" g   ... State: "); Serial.print(current_state);
+    Serial.print("  ... Calibration factor: "); Serial.println(calibration_factor);
 
     // --- STATE MACHINE MANAGEMENT ---
     
