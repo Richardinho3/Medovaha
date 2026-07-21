@@ -2,12 +2,12 @@
 #include <SPI.h>
 #include <TFT_eSPI.h>
 #include <ESP32Servo.h> 
-#include <ESP32Encoder.h> // --- ADDED ENCODER LIBRARY ---
+#include <ESP32Encoder.h>
 
 const int LOADCELL_DOUT_PIN = 4; 
-const int LOADCELL_SCK_PIN = 1;  // *Reminder: Consider moving this from Pin 1 later!
+const int LOADCELL_SCK_PIN = 1;  
 
-const int servoPin = 5; // *Note: If you actually hook up the servo later, you will need to change this pin since the encoder is using 5 now.
+const int servoPin = 5; 
 
 Servo honeyValve;
 TFT_eSPI tft = TFT_eSPI(); 
@@ -20,14 +20,19 @@ const int ENCODER_SW = 7;
 
 long startup_baseline = 0;
 long tare_offset = 0;
-float calibration_factor = 1035.0; // <--------------------------------------------------------------------------------------------------------------------------------------------------------------
+float calibration_factor = 1035.0; 
 
 int previous_fill_y = 198; 
 float previous_needle_weight = -999.0; 
 
-// --- STATE MACHINE ---
+// --- STATE MACHINE & MENU ---
 enum ScaleState { STATE_EMPTY, STATE_TARING, STATE_POURING };
 ScaleState current_state = STATE_EMPTY;
+
+bool in_menu = true;
+int menu_selection = 0; // 0 = Vážení, 1 = Stáčení
+int last_menu_selection = -1;
+int app_mode = 0; // Saves the chosen mode
 
 // --- CUSTOM 16-BIT COLORS ---
 #define HONEY_DARK  tft.color565(180, 100, 0)   
@@ -36,6 +41,7 @@ ScaleState current_state = STATE_EMPTY;
 #define GOLD_LID    tft.color565(210, 170, 50)
 #define GLASS_EDGE  tft.color565(150, 150, 170) 
 #define NEEDLE_RED  tft.color565(255, 0, 0)
+#define MENU_SELECT tft.color565(0, 255, 100) // Bright green for menu highlight
 
 long read_hx711_software_timed() {
   long count = 0;
@@ -64,6 +70,33 @@ long read_hx711_software_timed() {
 
   if (count & 0x800000) count |= 0xFF000000;
   return count;
+}
+
+void drawMenu() {
+  tft.fillScreen(TFT_BLACK);
+  
+  // Title
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.drawCentreString("HLAVNI MENU", 160, 40, 4);
+  tft.drawFastHLine(40, 70, 240, TFT_DARKGREY);
+
+  // Option 0: Vážení
+  if (menu_selection == 0) {
+    tft.setTextColor(MENU_SELECT, TFT_BLACK);
+    tft.drawCentreString("> VAZENI <", 160, 110, 4);
+  } else {
+    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    tft.drawCentreString("  VAZENI  ", 160, 110, 4);
+  }
+
+  // Option 1: Stáčení
+  if (menu_selection == 1) {
+    tft.setTextColor(MENU_SELECT, TFT_BLACK);
+    tft.drawCentreString("> STACENI <", 160, 160, 4);
+  } else {
+    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    tft.drawCentreString("  STACENI  ", 160, 160, 4);
+  }
 }
 
 void drawScaleGraphic() {
@@ -173,6 +206,27 @@ void drawJarLine(int y, bool erase) {
   }
 }
 
+// Helper to launch the main screen after menu selection
+void launchMainScreen() {
+  tft.fillScreen(TFT_BLACK);
+  drawScaleGraphic();
+  
+  tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+  tft.drawString("Current Weight:", 140, 30, 2);
+  
+  // Display the chosen mode
+  if (app_mode == 0) {
+    tft.drawString("Mode: VAZENI", 140, 130, 2);
+  } else {
+    tft.drawString("Mode: STACENI", 140, 130, 2);
+    tft.drawString("Target: 1000.0 g", 140, 150, 2);
+  }
+
+  tft.drawFastHLine(0, 205, 320, TFT_DARKGREY);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.drawCentreString("t=TARE | u=UNTARE | w/s=CALIB", 160, 215, 2);
+}
+
 void setup() {
   Serial.begin(115200);
   delay(100); 
@@ -187,15 +241,7 @@ void setup() {
   tft.setRotation(1); 
   tft.fillScreen(TFT_BLACK);
 
-  drawScaleGraphic();
-  tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-  tft.drawString("Current Weight:", 140, 30, 2);
-  tft.drawString("Target: 1000.0 g", 140, 130, 2);
-
-  tft.drawFastHLine(0, 205, 320, TFT_DARKGREY);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.drawCentreString("t=TARE | u=UNTARE | w/s=CALIB", 160, 215, 2);
-
+  // Initialize load cell baseline
   long sample_sum = 0; int valid_samples = 0;
   for(int i = 0; i < 8; i++) {
     long reading = read_hx711_software_timed();
@@ -214,13 +260,54 @@ void setup() {
   
   honeyValve.setPeriodHertz(50); 
   
-  // Note: Since servoPin is 5 and the encoder is using 5, 
-  // the servo attach is commented out so they don't fight during this test.
-  // honeyValve.attach(servoPin, 500, 2400); 
-  // honeyValve.write(0);
+  // Start by drawing the menu
+  drawMenu();
 }
 
 void loop() {
+  
+  // ==========================================
+  // MENU LOOP
+  // ==========================================
+  if (in_menu) {
+    // Read encoder. Divide by 2 depending on encoder detents so it doesn't jump too fast.
+    int encoder_val = encoder.getCount() / 2; 
+    
+    // Clamp the values to keep it between 0 and 1
+    if (encoder_val > 1) { 
+      encoder.setCount(2); 
+      encoder_val = 1; 
+    }
+    if (encoder_val < 0) { 
+      encoder.setCount(0); 
+      encoder_val = 0; 
+    }
+
+    if (encoder_val != last_menu_selection) {
+      menu_selection = encoder_val;
+      drawMenu();
+      last_menu_selection = menu_selection;
+    }
+
+    // Check button press to select option
+    if (digitalRead(ENCODER_SW) == LOW) {
+      delay(50); // Simple software debounce
+      while(digitalRead(ENCODER_SW) == LOW); // Wait for button release
+      
+      app_mode = menu_selection; // Save choice
+      in_menu = false;           // Exit menu mode
+      encoder.setCount(0);       // Reset encoder for use in the main app
+      
+      launchMainScreen();        // Build the main UI
+    }
+    
+    return; // Do not execute the main scale logic while in the menu
+  }
+
+  // ==========================================
+  // MAIN PROGRAM LOOP (Vážení / Stáčení)
+  // ==========================================
+  
   long raw_reading = read_hx711_software_timed();
   
   if (raw_reading != 0) {
@@ -231,16 +318,13 @@ void loop() {
     float raw_total_weight = (float)(raw_reading - startup_baseline) / calibration_factor;
 
     // --- ENCODER TEST INJECTION ---
-    // Multiply each click by 20.0 grams to make testing faster
     float fake_weight_offset = encoder.getCount() * 20.0; 
     
-    // Check if the button is pressed (LOW = pressed) to clear the fake weight
     if (digitalRead(ENCODER_SW) == LOW) {
-      encoder.setCount(0); // Reset dial to 0
+      encoder.setCount(0); 
       fake_weight_offset = 0.0;
     }
 
-    // Add the fake weight into the real variables before the screen processes them
     current_weight += fake_weight_offset;
     raw_total_weight += fake_weight_offset;
     // ------------------------------
@@ -264,7 +348,8 @@ void loop() {
         previous_needle_weight = current_weight;
       }
 
-      if (current_weight > 200.0) {
+      // If in Stáčení mode, auto-tare when a jar is placed
+      if (app_mode == 1 && current_weight > 200.0) {
         current_state = STATE_TARING;
       }
     }
@@ -288,9 +373,7 @@ void loop() {
       drawJarOutline();
       previous_fill_y = 198;
       
-      // Auto-reset the fake weight here so the pouring starts at 0g inside the jar!
       encoder.setCount(0); 
-      
       current_state = STATE_POURING;
     }
     
