@@ -80,22 +80,49 @@ void drawMenu() {
   tft.drawCentreString("HLAVNI MENU", 160, 40, 4);
   tft.drawFastHLine(40, 70, 240, TFT_DARKGREY);
 
-  // Option 0: Vážení
+  // Option 0: Vážení (Y = 90)
   if (menu_selection == 0) {
     tft.setTextColor(MENU_SELECT, TFT_BLACK);
-    tft.drawCentreString("> VAZENI <", 160, 110, 4);
+    tft.drawCentreString("> VAZENI <", 160, 90, 4);
   } else {
     tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-    tft.drawCentreString("  VAZENI  ", 160, 110, 4);
+    tft.drawCentreString("  VAZENI  ", 160, 90, 4);
   }
 
-  // Option 1: Stáčení
+  // Option 1: Stáčení (Y = 120)
   if (menu_selection == 1) {
     tft.setTextColor(MENU_SELECT, TFT_BLACK);
-    tft.drawCentreString("> STACENI <", 160, 160, 4);
+    tft.drawCentreString("> STACENI <", 160, 120, 4);
   } else {
     tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-    tft.drawCentreString("  STACENI  ", 160, 160, 4);
+    tft.drawCentreString("  STACENI  ", 160, 120, 4);
+  }
+
+  // Option 2: Kalibrace (Y = 150)
+  if (menu_selection == 2) {
+    tft.setTextColor(MENU_SELECT, TFT_BLACK);
+    tft.drawCentreString("> KALIBRACE <", 160, 150, 4);
+  } else {
+    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    tft.drawCentreString("  KALIBRACE  ", 160, 150, 4);
+  }
+
+  // Option 3: Nastavení (Y = 180)
+  if (menu_selection == 3) {
+    tft.setTextColor(MENU_SELECT, TFT_BLACK);
+    tft.drawCentreString("> NASTAVENI <", 160, 180, 4);
+  } else {
+    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    tft.drawCentreString("  NASTAVENI  ", 160, 180, 4);
+  }
+
+  // Option 4: Info (Y = 210) - Fixed index to 4!
+  if (menu_selection == 4) {
+    tft.setTextColor(MENU_SELECT, TFT_BLACK);
+    tft.drawCentreString("> INFO <", 160, 210, 4);
+  } else {
+    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    tft.drawCentreString("  INFO  ", 160, 210, 4);
   }
 }
 
@@ -274,9 +301,9 @@ void loop() {
     int encoder_val = encoder.getCount() / 2; 
     
     // Clamp the values to keep it between 0 and 1
-    if (encoder_val > 1) { 
-      encoder.setCount(2); 
-      encoder_val = 1; 
+    if (encoder_val > 4) { 
+      encoder.setCount(8); 
+      encoder_val = 4; 
     }
     if (encoder_val < 0) { 
       encoder.setCount(0); 
